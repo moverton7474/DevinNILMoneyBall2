@@ -11,7 +11,8 @@ import type {
   BaronHopsonComparison 
 } from '../types/moneyball';
 
-const API_BASE_URL = 'https://user:d93183781896e0c0f1016fb47ea03046@nil-money-ball-app-tunnel-sy1ff89i.devinapps.com/api/v1';
+const API_BASE_URL = 'http://localhost:5000/api/v1';
+const API_CREDENTIALS = '';
 
 class MoneyballAPI {
   private baseURL: string;
@@ -26,6 +27,7 @@ class MoneyballAPI {
         ...options,
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': API_CREDENTIALS,
           ...options.headers,
         },
       });
@@ -61,14 +63,11 @@ class MoneyballAPI {
 
   // Roster Upload Methods
   async uploadRoster(data: any): Promise<{ success: boolean; session_id: string; imported: number; failed: number; players: any[] }> {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return {
-      success: true,
-      session_id: `session_${Date.now()}`,
-      imported: data.players?.length || 0,
-      failed: 0,
-      players: data.players || []
-    };
+    return this.request('/roster/upload', {
+      method: 'POST',
+      body: JSON.stringify(data),
+      signal: AbortSignal.timeout(300000) // 5 minutes timeout
+    });
   }
 
   async getUploadSession(sessionId: string): Promise<{ players: any[] }> {

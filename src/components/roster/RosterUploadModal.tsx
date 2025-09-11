@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { Button } from '../ui/Button';
 import toast from 'react-hot-toast';
+import { moneyballApi } from '../../services/api';
 
 interface RosterUploadModalProps {
   isOpen: boolean;
@@ -176,7 +177,7 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
     setMapping(autoMapping);
     setPreview(validData.slice(0, 10));
     
-    // Validation check - only name is required now
+    // Validation check - only name is required
     const mappedFields = Object.values(autoMapping);
     const hasCriticalFields = mappedFields.includes('name');
     
@@ -199,7 +200,7 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
     setIsProcessing(true);
     setUploadStatus('uploading');
     
-    // Final validation - only name is required now
+    // Final validation - only name is required
     const mappedFields = Object.values(mapping);
     if (!mappedFields.includes('name')) {
       setErrors(['Name field is required']);
@@ -209,32 +210,11 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
     }
 
     try {
-      const response = await fetch('/api/v1/roster/upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          players: data, // Send all data, not just preview
-          mapping: mapping,
-          filename: file?.name || 'roster_upload.csv'
-        }),
-        signal: AbortSignal.timeout(300000) // 5 minutes timeout
+      const result = await moneyballApi.uploadRoster({
+        players: data, // Send all data, not just preview
+        mapping: mapping,
+        filename: file?.name || 'roster_upload.csv'
       });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = 'Upload failed';
-        try {
-          const errorData = JSON.parse(errorText);
-          errorMessage = errorData.error || errorMessage;
-        } catch {
-          errorMessage = errorText || errorMessage;
-        }
-        throw new Error(errorMessage);
-      }
-
-      const result = await response.json();
       
       if (result.success) {
         setUploadStatus('success');
@@ -257,8 +237,8 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
         }, 2000);
       } else {
         setUploadStatus('error');
-        setErrors([result.error || 'Upload failed']);
-        toast.error(`Upload failed: ${result.error}`);
+        setErrors(['Upload failed']);
+        toast.error('Upload failed');
       }
     } catch (error: any) {
       setUploadStatus('error');

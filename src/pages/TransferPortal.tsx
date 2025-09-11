@@ -34,7 +34,7 @@ const TransferPortal: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const displayPlayers = uploadedPlayers.length > 0 ? uploadedPlayers : players;
+  const displayPlayers = (uploadedPlayers?.length || 0) > 0 ? uploadedPlayers : players;
 
   useEffect(() => {
     loadPlayers();
