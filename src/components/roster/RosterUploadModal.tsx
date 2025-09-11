@@ -18,6 +18,7 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
   onUploadComplete
 }) => {
   const [file, setFile] = useState<File | null>(null);
+  const [data, setData] = useState<any[]>([]);
   const [preview, setPreview] = useState<any[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [isProcessing, setIsProcessing] = useState(false);
@@ -129,52 +130,79 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
     }
   };
 
-  const handleParsedData = (data: any[]) => {
-    if (data.length === 0) {
-      setErrors(['No data found in file']);
+  const handleParsedData = (parsedData: any[]) => {
+    if (parsedData.length === 0) {
+      setErrors(['File appears to be empty or invalid']);
       return;
     }
 
-    // Auto-detect column mappings
-    const headers = Object.keys(data[0]);
+    const validData = parsedData.filter(row => {
+      return Object.values(row).some(value => 
+        value !== null && value !== undefined && String(value).trim() !== ''
+      );
+    });
+
+    if (validData.length === 0) {
+      setErrors(['No valid data found in file']);
+      return;
+    }
+
+    // Auto-detect column mappings with enhanced detection for user's Excel format
+    const headers = Object.keys(validData[0]);
     const autoMapping: Record<string, string> = {};
     
     headers.forEach(header => {
       const trimmedHeader = header.trim();
+      const lowerHeader = trimmedHeader.toLowerCase();
+      
       if (columnMappings[trimmedHeader]) {
         autoMapping[header] = columnMappings[trimmedHeader];
       } else {
-        // Fuzzy matching for variations
-        const lowerHeader = trimmedHeader.toLowerCase();
-        for (const [key, value] of Object.entries(columnMappings)) {
-          if (key.toLowerCase().includes(lowerHeader) || lowerHeader.includes(key.toLowerCase())) {
-            autoMapping[header] = value;
-            break;
-          }
-        }
+        // Enhanced fuzzy matching for user's specific Excel format
+        if (lowerHeader.includes('name')) autoMapping[header] = 'name';
+        else if (lowerHeader === 'st' || lowerHeader.includes('position')) autoMapping[header] = 'position';
+        else if (lowerHeader === 'ht' || lowerHeader.includes('height')) autoMapping[header] = 'height';
+        else if (lowerHeader === 'wt' || lowerHeader.includes('weight')) autoMapping[header] = 'weight';
+        else if (lowerHeader.includes('school')) autoMapping[header] = 'previous_school';
+        else if (lowerHeader.includes('hometown')) autoMapping[header] = 'hometown';
+        else if (lowerHeader.includes('state')) autoMapping[header] = 'home_state';
+        else if (lowerHeader.includes('gpa')) autoMapping[header] = 'gpa';
+        else if (lowerHeader.includes('division')) autoMapping[header] = 'transfer_from';
+        else if (lowerHeader.includes('conference')) autoMapping[header] = 'conference';
       }
     });
     
+    setData(validData);
     setMapping(autoMapping);
-    setPreview(data.slice(0, 10)); // Show first 10 rows
+    setPreview(validData.slice(0, 10));
     
-    // Validation check
+    // Validation check - only name is required now
     const mappedFields = Object.values(autoMapping);
-    const hasCriticalFields = mappedFields.includes('name') && mappedFields.includes('position');
+    const hasCriticalFields = mappedFields.includes('name');
     
     if (!hasCriticalFields) {
-      setErrors(['Critical fields missing: Name and Position must be mapped']);
+      setErrors(['Critical field missing: Name must be mapped']);
+    } else {
+      setErrors([]);
     }
   };
 
   const validateAndUpload = async () => {
+    // Validate file size (warn for very large files)
+    if (file && file.size > 10 * 1024 * 1024) { // 10MB
+      const confirmed = window.confirm(
+        `This file is ${(file.size / (1024 * 1024)).toFixed(1)}MB. Large files may take several minutes to process. Continue?`
+      );
+      if (!confirmed) return;
+    }
+
     setIsProcessing(true);
     setUploadStatus('uploading');
     
-    // Final validation
+    // Final validation - only name is required now
     const mappedFields = Object.values(mapping);
-    if (!mappedFields.includes('name') || !mappedFields.includes('position')) {
-      setErrors(['Name and Position fields are required']);
+    if (!mappedFields.includes('name')) {
+      setErrors(['Name field is required']);
       setIsProcessing(false);
       setUploadStatus('error');
       return;
@@ -187,11 +215,24 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          players: preview.length > 10 ? preview.concat(preview.slice(10)) : preview, // Send all data, not just preview
+          players: data, // Send all data, not just preview
           mapping: mapping,
           filename: file?.name || 'roster_upload.csv'
-        })
+        }),
+        signal: AbortSignal.timeout(300000) // 5 minutes timeout
       });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = 'Upload failed';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
 
       const result = await response.json();
       
@@ -219,10 +260,18 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
         setErrors([result.error || 'Upload failed']);
         toast.error(`Upload failed: ${result.error}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       setUploadStatus('error');
-      setErrors(['Network error - unable to connect to server']);
-      toast.error('Network error during upload');
+      if (error.name === 'AbortError') {
+        setErrors(['Upload timed out. Please try with a smaller file or check your connection.']);
+        toast.error('Upload timed out');
+      } else if (error.message.includes('fetch')) {
+        setErrors(['Network error - unable to connect to server. Please check your connection and try again.']);
+        toast.error('Network error during upload');
+      } else {
+        setErrors([error.message || 'Upload failed. Please try again.']);
+        toast.error(`Upload failed: ${error.message}`);
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -230,6 +279,7 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
 
   const resetForm = () => {
     setFile(null);
+    setData([]);
     setPreview([]);
     setMapping({});
     setErrors([]);
@@ -291,7 +341,7 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
                   <div>
                     <span className="font-medium">{file.name}</span>
                     <div className="text-sm text-gray-500">
-                      {(file.size / 1024).toFixed(1)} KB • {preview.length} rows detected
+                      {(file.size / 1024).toFixed(1)} KB • {data.length} rows detected
                     </div>
                   </div>
                 </div>
@@ -402,11 +452,11 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
         {/* Footer with Actions */}
         <div className="p-6 border-t bg-gray-50 flex justify-between items-center">
           <div className="text-sm text-gray-600">
-            {file && preview.length > 0 && uploadStatus !== 'success' && (
-              <span>Ready to import {preview.length} players</span>
+            {file && data.length > 0 && uploadStatus !== 'success' && (
+              <span>Ready to import {data.length} players</span>
             )}
             {uploadStatus === 'uploading' && (
-              <span className="text-blue-600 font-medium">Uploading and processing...</span>
+              <span className="text-blue-600 font-medium">Processing {data.length} players...</span>
             )}
           </div>
           <div className="flex gap-3">
@@ -420,18 +470,18 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
             {uploadStatus !== 'success' && (
               <Button
                 onClick={validateAndUpload}
-                disabled={!file || preview.length === 0 || isProcessing || errors.length > 0}
+                disabled={!file || data.length === 0 || isProcessing || errors.length > 0}
                 className="bg-blue-600 hover:bg-blue-700"
               >
                 {isProcessing ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    {uploadStatus === 'uploading' ? 'Importing...' : 'Processing...'}
+                    {uploadStatus === 'uploading' ? `Processing ${data.length} players...` : 'Processing...'}
                   </>
                 ) : (
                   <>
                     <Upload className="w-4 h-4 mr-2" />
-                    Import {preview.length} Players
+                    Import {data.length} Players
                   </>
                 )}
               </Button>
@@ -442,3 +492,5 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
     </div>
   );
 };
+
+export default RosterUploadModal;

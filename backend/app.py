@@ -190,45 +190,71 @@ def create_athlete():
 # Roster upload endpoint
 @app.route('/api/v1/roster/upload', methods=['POST'])
 def upload_roster():
-    """Upload roster data"""
+    """Upload roster data with support for large files"""
     try:
         data = request.get_json()
         players = data.get('players', [])
         mapping = data.get('mapping', {})
         
+        print(f"Processing upload with {len(players)} players")
+        
         imported_count = 0
         failed_count = 0
         session_id = f"session_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
         
-        for player_data in players:
+        batch_size = 50
+        for i in range(0, len(players), batch_size):
+            batch = players[i:i + batch_size]
+            print(f"Processing batch {i//batch_size + 1}/{(len(players) + batch_size - 1)//batch_size}")
+            
+            for player_data in batch:
+                try:
+                    # Map columns with better error handling
+                    mapped_player = {}
+                    for original_col, mapped_col in mapping.items():
+                        if mapped_col and original_col in player_data:
+                            value = player_data[original_col]
+                            if value is not None and str(value).strip() != '':
+                                mapped_player[mapped_col] = str(value).strip()
+                    
+                    if not mapped_player.get('name'):
+                        print(f"Skipping player due to missing name: {mapped_player}")
+                        failed_count += 1
+                        continue
+                    
+                    position = mapped_player.get('position') or 'Unknown'
+                    
+                    # Create athlete with better type handling
+                    athlete = Athlete(
+                        name=mapped_player.get('name'),
+                        position=position,
+                        previous_school=mapped_player.get('previous_school'),
+                        conference=mapped_player.get('conference'),
+                        transfer_from=mapped_player.get('transfer_from'),
+                        gpa=float(mapped_player.get('gpa', 0)) if mapped_player.get('gpa') and str(mapped_player.get('gpa')).replace('.', '').isdigit() else None,
+                        market_value=int(float(mapped_player.get('market_value', 0))) if mapped_player.get('market_value') and str(mapped_player.get('market_value')).replace('.', '').isdigit() else None,
+                        home_state=mapped_player.get('home_state'),
+                        hometown=mapped_player.get('hometown'),
+                        height=mapped_player.get('height'),
+                        weight=int(float(mapped_player.get('weight', 0))) if mapped_player.get('weight') and str(mapped_player.get('weight')).replace('.', '').isdigit() else None
+                    )
+                    
+                    db.session.add(athlete)
+                    imported_count += 1
+                    
+                except Exception as e:
+                    print(f"Error importing player {player_data.get('Name', 'Unknown')}: {str(e)}")
+                    failed_count += 1
+            
             try:
-                # Map columns
-                mapped_player = {}
-                for original_col, mapped_col in mapping.items():
-                    if mapped_col and original_col in player_data:
-                        mapped_player[mapped_col] = player_data[original_col]
-                
-                # Create athlete
-                athlete = Athlete(
-                    name=mapped_player.get('name'),
-                    position=mapped_player.get('position'),
-                    previous_school=mapped_player.get('previous_school'),
-                    gpa=float(mapped_player.get('gpa', 0)) if mapped_player.get('gpa') else None,
-                    market_value=int(mapped_player.get('market_value', 0)) if mapped_player.get('market_value') else None,
-                    home_state=mapped_player.get('home_state'),
-                    hometown=mapped_player.get('hometown'),
-                    height=mapped_player.get('height'),
-                    weight=int(mapped_player.get('weight', 0)) if mapped_player.get('weight') else None
-                )
-                
-                db.session.add(athlete)
-                imported_count += 1
-                
+                db.session.commit()
+                print(f"Committed batch {i//batch_size + 1}")
             except Exception as e:
-                print(f"Error importing player: {str(e)}")
-                failed_count += 1
+                print(f"Error committing batch: {str(e)}")
+                db.session.rollback()
+                failed_count += len(batch)
         
-        db.session.commit()
+        print(f"Upload complete: {imported_count} imported, {failed_count} failed")
         
         return jsonify({
             'success': True,
@@ -244,6 +270,43 @@ def upload_roster():
         return jsonify({
             'success': False,
             'error': f'Upload failed: {str(e)}'
+        }), 500
+
+@app.route('/api/v1/roster/session/<session_id>', methods=['GET'])
+def get_session_players(session_id):
+    """Get players from a specific upload session"""
+    try:
+        # For now, return all recent players since we don't store session_id in the database
+        athletes = Athlete.query.order_by(Athlete.id.desc()).limit(50).all()
+        
+        players = []
+        for athlete in athletes:
+            players.append({
+                'id': athlete.id,
+                'name': athlete.name,
+                'position': athlete.position,
+                'previous_school': athlete.previous_school,
+                'conference': athlete.conference,
+                'transfer_from': athlete.transfer_from,
+                'gpa': athlete.gpa,
+                'market_value': athlete.market_value,
+                'home_state': athlete.home_state,
+                'hometown': athlete.hometown,
+                'height': athlete.height,
+                'weight': athlete.weight
+            })
+        
+        return jsonify({
+            'success': True,
+            'players': players,
+            'session_id': session_id
+        }), 200
+        
+    except Exception as e:
+        print(f"Session retrieval error: {str(e)}")
+        return jsonify({
+            'success': False,
+            'error': f'Failed to retrieve session: {str(e)}'
         }), 500
 
 # Analytics dashboard endpoint

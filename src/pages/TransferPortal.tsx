@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { RosterUploadModal } from '../components/roster/RosterUploadModal';
+import RosterUploadModal from '../components/roster/RosterUploadModal';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { moneyballApi } from '../services/api';
@@ -33,6 +33,8 @@ const TransferPortal: React.FC = () => {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  const displayPlayers = uploadedPlayers.length > 0 ? uploadedPlayers : players;
 
   useEffect(() => {
     loadPlayers();
@@ -166,9 +168,8 @@ const TransferPortal: React.FC = () => {
   };
 
   const positions = ['All', 'QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'DB'];
-  const displayPlayers = uploadedPlayers.length > 0 ? uploadedPlayers : players;
   
-  const filteredPlayers = displayPlayers.filter(player => {
+  const filteredPlayers = (displayPlayers || []).filter(player => {
     const matchesSearch = player.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          player.previous_school?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesPosition = positionFilter === 'All' || player.position === positionFilter;
@@ -214,7 +215,7 @@ const TransferPortal: React.FC = () => {
             </div>
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Available Players</p>
-              <p className="text-2xl font-bold text-gray-900">{displayPlayers.length.toLocaleString()}</p>
+              <p className="text-2xl font-bold text-gray-900">{displayPlayers?.length?.toLocaleString() || 0}</p>
             </div>
           </CardContent>
         </Card>
@@ -227,7 +228,7 @@ const TransferPortal: React.FC = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Uploaded Players</p>
               <p className="text-2xl font-bold text-gray-900">
-                {uploadedPlayers.length}
+                {uploadedPlayers?.length || 0}
               </p>
             </div>
           </CardContent>
@@ -241,7 +242,7 @@ const TransferPortal: React.FC = () => {
             <div className="ml-4">
               <p className="text-sm font-medium text-gray-600">Analyzed Players</p>
               <p className="text-2xl font-bold text-gray-900">
-                {uploadedPlayers.filter(p => p.baron_hopson_score).length}
+                {(uploadedPlayers || []).filter(p => p.baron_hopson_score).length}
               </p>
             </div>
           </CardContent>
@@ -249,7 +250,7 @@ const TransferPortal: React.FC = () => {
       </div>
 
       {/* Upload Success Banner */}
-      {uploadedPlayers.length > 0 && (
+      {(uploadedPlayers?.length || 0) > 0 && (
         <Card className="bg-gradient-to-r from-green-50 to-emerald-50 border-green-200">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
@@ -257,17 +258,17 @@ const TransferPortal: React.FC = () => {
                 <CheckCircle className="w-8 h-8 text-green-600" />
                 <div>
                   <h3 className="text-lg font-semibold text-green-800">
-                    {uploadedPlayers.length} Players Successfully Imported
+                    {uploadedPlayers?.length || 0} Players Successfully Imported
                   </h3>
                   <p className="text-sm text-green-600 mt-1">
-                    {uploadedPlayers.filter(p => p.baron_hopson_score).length} analyzed • {' '}
-                    {uploadedPlayers.filter(p => !p.baron_hopson_score).length} pending analysis
+                    {(uploadedPlayers || []).filter(p => p.baron_hopson_score).length} analyzed • {' '}
+                    {(uploadedPlayers || []).filter(p => !p.baron_hopson_score).length} pending analysis
                   </p>
                 </div>
               </div>
 
               <div className="flex gap-3">
-                {uploadedPlayers.filter(p => !p.baron_hopson_score).length > 0 && (
+                {(uploadedPlayers || []).filter(p => !p.baron_hopson_score).length > 0 && (
                   <Button
                     onClick={runBulkBaronAnalysis}
                     disabled={isAnalyzing}
@@ -398,7 +399,7 @@ const TransferPortal: React.FC = () => {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>
-              {uploadedPlayers.length > 0 ? 'Uploaded Players' : 'Transfer Portal Players'} 
+              {(uploadedPlayers?.length || 0) > 0 ? 'Uploaded Players' : 'Transfer Portal Players'} 
               ({sortedPlayers.length})
             </span>
             <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -474,7 +475,7 @@ const TransferPortal: React.FC = () => {
             <div className="text-center py-8">
               <Users className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600">
-                {displayPlayers.length === 0 
+                {(displayPlayers?.length || 0) === 0 
                   ? 'No players available. Upload a roster to get started.'
                   : 'No players found matching your criteria'
                 }
