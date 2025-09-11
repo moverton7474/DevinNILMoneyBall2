@@ -11,7 +11,12 @@ app = Flask(__name__)
 
 # Configuration
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///data/nil_moneyball.db'
+
+os.makedirs('data', exist_ok=True)
+
+# Use absolute path for SQLite database
+db_path = os.path.abspath('data/nil_moneyball.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'jwt-secret-string')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
@@ -22,7 +27,7 @@ jwt = JWTManager(app)
 
 # Configure CORS
 CORS(app, 
-     origins=['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173'],
+     origins=['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'https://nil-money-ball-app-2xq19npv.devinapps.com'],
      allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
      methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
      supports_credentials=True)

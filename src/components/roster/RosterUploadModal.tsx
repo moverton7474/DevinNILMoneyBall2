@@ -181,7 +181,7 @@ export const RosterUploadModal: React.FC<RosterUploadModalProps> = ({
     }
 
     try {
-      const response = await fetch('/api/roster/upload', {
+      const response = await fetch('/api/v1/roster/upload', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

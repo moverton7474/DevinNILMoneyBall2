@@ -58,7 +58,7 @@ const TransferPortal: React.FC = () => {
 
   const loadSessionPlayers = async (sessionId: string) => {
     try {
-      const response = await fetch(`/api/roster/session/${sessionId}`);
+      const response = await fetch(`/api/v1/roster/session/${sessionId}`);
       const data = await response.json();
       
       if (data.players) {
