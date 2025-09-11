@@ -56,20 +56,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (username: string, password: string) => {
     try {
-      console.log('AuthContext login called with:', { username, password })
       const response = await axios.post(`${API_URL}/auth/login`, {
         username,
         password
       })
       
-      console.log('Login response:', response.data)
       const { access_token, user: userData } = response.data
       setToken(access_token)
       setUser(userData)
       localStorage.setItem('token', access_token)
       axios.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
     } catch (error) {
-      console.error('Login error:', error)
       throw new Error('Login failed')
     }
   }
