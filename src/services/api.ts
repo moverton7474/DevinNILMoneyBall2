@@ -11,7 +11,7 @@ import type {
   BaronHopsonComparison 
 } from '../types/moneyball';
 
-const API_BASE_URL = 'https://user:10a6f01da1b88b739e585a7f0341a6d0@nil-moneyball-system-tunnel-rh4nk61l.devinapps.com/api/v1';
+const API_BASE_URL = 'https://user:d93183781896e0c0f1016fb47ea03046@nil-money-ball-app-tunnel-sy1ff89i.devinapps.com/api/v1';
 
 class MoneyballAPI {
   private baseURL: string;
