@@ -27,7 +27,7 @@ jwt = JWTManager(app)
 
 # Configure CORS
 CORS(app, 
-     origins=['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'https://nil-money-ball-app-2xq19npv.devinapps.com'],
+     origins=['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'https://nil-money-ball-app-2xq19npv.devinapps.com', 'https://nil-backend-1757608515.loca.lt'],
      allow_headers=['Content-Type', 'Authorization', 'X-Requested-With'],
      methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
      supports_credentials=True)
