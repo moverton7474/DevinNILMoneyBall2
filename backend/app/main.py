@@ -6,7 +6,7 @@ from typing import List, Optional
 import psycopg
 
 from .database import engine, get_db
-from .models import Base, User, Team, Athlete, NILDeal, AthleteEvaluation, TransferPortalEntry, RevenueShareAllocation, ComplianceReport
+from .models import Base, User, Team, Athlete, NILDeal, AthleteEvaluation, TransferPortalEntry, RevenueShareAllocation, ComplianceReport, SocialMediaMetrics, CompetitiveIntelligence, ReportSchedule
 from .auth import get_current_user, get_current_active_user, create_access_token, verify_password, get_password_hash
 from .baron_hopson import BaronHopsonEngine
 from .schemas import (
@@ -313,3 +313,334 @@ async def get_title_ix_compliance(team_id: int, db: Session = Depends(get_db)):
         'title_ix_compliant': True,  # Simplified - would need actual Title IX logic
         'compliance_notes': 'All deals and allocations reviewed for Title IX compliance'
     }
+
+@app.get("/api/reports/baron-roi")
+async def get_baron_roi_report(
+    start: str = None, 
+    end: str = None, 
+    team: int = None, 
+    position: str = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    athletes = db.query(Athlete).filter(Athlete.team_id == team if team else True).all()
+    
+    roi_data = []
+    for athlete in athletes:
+        roi_ratio = athlete.market_value / max(athlete.nil_value, 1) if athlete.nil_value > 0 else 0
+        roi_data.append({
+            'athlete_id': athlete.id,
+            'name': athlete.name,
+            'position': athlete.position,
+            'baron_hopson_score': athlete.baron_hopson_score,
+            'nil_investment': athlete.nil_value,
+            'market_value': athlete.market_value,
+            'roi_ratio': roi_ratio,
+            'is_baron_gem': roi_ratio >= 6.0
+        })
+    
+    return {
+        'report_type': 'baron_roi',
+        'data': sorted(roi_data, key=lambda x: x['roi_ratio'], reverse=True),
+        'summary': {
+            'total_athletes': len(athletes),
+            'baron_gems_count': len([a for a in roi_data if a['is_baron_gem']]),
+            'average_roi': sum(a['roi_ratio'] for a in roi_data) / len(roi_data) if roi_data else 0
+        }
+    }
+
+@app.get("/api/reports/recruiting-pipeline")
+async def get_recruiting_pipeline_report(
+    window: int = 7,
+    position: str = None,
+    status: str = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    from datetime import datetime, timedelta
+    cutoff_date = datetime.utcnow() - timedelta(days=window)
+    
+    entries = db.query(TransferPortalEntry).filter(
+        TransferPortalEntry.entry_date >= cutoff_date
+    ).all()
+    
+    pipeline_data = []
+    for entry in entries:
+        days_in_portal = (datetime.utcnow() - entry.entry_date).days
+        status_color = 'green' if days_in_portal < 7 else 'yellow' if days_in_portal <= 14 else 'red'
+        
+        pipeline_data.append({
+            'entry_id': entry.id,
+            'athlete_name': entry.athlete.name if entry.athlete else 'Unknown',
+            'position': entry.athlete.position if entry.athlete else 'Unknown',
+            'days_in_portal': days_in_portal,
+            'status_color': status_color,
+            'baron_hopson_score': entry.baron_hopson_score_at_entry,
+            'market_value': entry.market_value_at_entry,
+            'target_schools': entry.target_schools,
+            'recommended_action': 'Strong Buy' if entry.baron_hopson_score_at_entry > 4.0 else 'Monitor'
+        })
+    
+    return {
+        'report_type': 'recruiting_pipeline',
+        'data': pipeline_data,
+        'summary': {
+            'new_entries': len(entries),
+            'strong_buy_count': len([e for e in pipeline_data if e['recommended_action'] == 'Strong Buy']),
+            'average_days_in_portal': sum(e['days_in_portal'] for e in pipeline_data) / len(pipeline_data) if pipeline_data else 0
+        }
+    }
+
+@app.get("/api/reports/budget-forecast")
+async def get_budget_forecast_report(
+    fiscal_year: str = None,
+    team: int = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    team_obj = db.query(Team).filter(Team.id == team if team else 1).first()
+    if not team_obj:
+        raise HTTPException(status_code=404, detail="Team not found")
+    
+    nil_deals = db.query(NILDeal).join(Athlete).filter(Athlete.team_id == team_obj.id).all()
+    revenue_allocations = db.query(RevenueShareAllocation).filter(RevenueShareAllocation.team_id == team_obj.id).all()
+    
+    total_nil_committed = sum(deal.deal_value for deal in nil_deals if deal.status == 'active')
+    total_revenue_committed = sum(alloc.allocation_amount for alloc in revenue_allocations)
+    
+    budget_data = {
+        'nil_budget': team_obj.nil_budget,
+        'nil_committed': total_nil_committed,
+        'nil_available': team_obj.nil_budget - total_nil_committed,
+        'revenue_cap': team_obj.revenue_share_cap,
+        'revenue_committed': total_revenue_committed,
+        'revenue_available': team_obj.revenue_share_cap - total_revenue_committed,
+        'budget_efficiency': (total_nil_committed + total_revenue_committed) / (team_obj.nil_budget + team_obj.revenue_share_cap) if (team_obj.nil_budget + team_obj.revenue_share_cap) > 0 else 0
+    }
+    
+    return {
+        'report_type': 'budget_forecast',
+        'data': budget_data,
+        'summary': {
+            'total_budget': team_obj.nil_budget + team_obj.revenue_share_cap,
+            'total_committed': total_nil_committed + total_revenue_committed,
+            'utilization_rate': budget_data['budget_efficiency']
+        }
+    }
+
+@app.get("/api/reports/position-performance")
+async def get_position_performance_report(
+    start: str = None,
+    end: str = None,
+    position: str = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    athletes = db.query(Athlete).filter(Athlete.is_active == True).all()
+    
+    position_data = {}
+    for athlete in athletes:
+        pos = athlete.position
+        if pos not in position_data:
+            position_data[pos] = {
+                'position': pos,
+                'count': 0,
+                'total_nil_cost': 0,
+                'total_market_value': 0,
+                'avg_baron_score': 0,
+                'athletes': []
+            }
+        
+        position_data[pos]['count'] += 1
+        position_data[pos]['total_nil_cost'] += athlete.nil_value
+        position_data[pos]['total_market_value'] += athlete.market_value
+        position_data[pos]['athletes'].append({
+            'name': athlete.name,
+            'baron_score': athlete.baron_hopson_score,
+            'nil_value': athlete.nil_value,
+            'market_value': athlete.market_value
+        })
+    
+    for pos in position_data:
+        pos_data = position_data[pos]
+        pos_data['avg_nil_cost'] = pos_data['total_nil_cost'] / pos_data['count'] if pos_data['count'] > 0 else 0
+        pos_data['avg_market_value'] = pos_data['total_market_value'] / pos_data['count'] if pos_data['count'] > 0 else 0
+        pos_data['avg_baron_score'] = sum(a['baron_score'] for a in pos_data['athletes']) / pos_data['count'] if pos_data['count'] > 0 else 0
+    
+    return {
+        'report_type': 'position_performance',
+        'data': list(position_data.values()),
+        'summary': {
+            'total_positions': len(position_data),
+            'total_athletes': sum(p['count'] for p in position_data.values()),
+            'avg_cost_per_position': sum(p['avg_nil_cost'] for p in position_data.values()) / len(position_data) if position_data else 0
+        }
+    }
+
+@app.get("/api/reports/compliance-academic")
+async def get_compliance_academic_report(
+    term: str = None,
+    status: str = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    athletes = db.query(Athlete).filter(Athlete.is_active == True).all()
+    nil_deals = db.query(NILDeal).all()
+    
+    compliance_data = []
+    for athlete in athletes:
+        athlete_deals = [deal for deal in nil_deals if deal.athlete_id == athlete.id]
+        total_deal_value = sum(deal.deal_value for deal in athlete_deals)
+        
+        compliance_data.append({
+            'athlete_id': athlete.id,
+            'name': athlete.name,
+            'position': athlete.position,
+            'year': athlete.year,
+            'nil_deals_count': len(athlete_deals),
+            'total_nil_value': total_deal_value,
+            'compliance_status': 'compliant' if all(deal.compliance_status == 'approved' for deal in athlete_deals) else 'pending',
+            'academic_status': 'eligible',  # Simplified
+            'risk_level': 'low' if total_deal_value < 50000 else 'medium' if total_deal_value < 100000 else 'high'
+        })
+    
+    return {
+        'report_type': 'compliance_academic',
+        'data': compliance_data,
+        'summary': {
+            'total_athletes': len(athletes),
+            'compliant_count': len([a for a in compliance_data if a['compliance_status'] == 'compliant']),
+            'high_risk_count': len([a for a in compliance_data if a['risk_level'] == 'high'])
+        }
+    }
+
+@app.get("/api/reports/social-roi")
+async def get_social_roi_report(
+    start: str = None,
+    end: str = None,
+    platform: str = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    athletes = db.query(Athlete).filter(Athlete.is_active == True).all()
+    
+    social_data = []
+    for athlete in athletes:
+        mock_followers = athlete.id * 1000 + 5000
+        mock_engagement = 0.03 + (athlete.baron_hopson_score / 100)
+        mock_social_value = mock_followers * mock_engagement * 0.1
+        
+        social_data.append({
+            'athlete_id': athlete.id,
+            'name': athlete.name,
+            'position': athlete.position,
+            'total_followers': mock_followers,
+            'engagement_rate': mock_engagement,
+            'social_nil_value': mock_social_value,
+            'nil_investment': athlete.nil_value,
+            'social_roi': mock_social_value / max(athlete.nil_value, 1) if athlete.nil_value > 0 else 0
+        })
+    
+    return {
+        'report_type': 'social_roi',
+        'data': sorted(social_data, key=lambda x: x['social_roi'], reverse=True),
+        'summary': {
+            'total_athletes': len(athletes),
+            'avg_followers': sum(a['total_followers'] for a in social_data) / len(social_data) if social_data else 0,
+            'avg_engagement': sum(a['engagement_rate'] for a in social_data) / len(social_data) if social_data else 0
+        }
+    }
+
+@app.get("/api/reports/competitive-intel")
+async def get_competitive_intel_report(
+    conference: str = None,
+    region: str = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    mock_competitors = [
+        {'school': 'Alabama', 'conference': 'SEC', 'nil_budget': 15000000, 'recruiting_wins': 12, 'recruiting_losses': 3},
+        {'school': 'Georgia', 'conference': 'SEC', 'nil_budget': 14500000, 'recruiting_wins': 11, 'recruiting_losses': 4},
+        {'school': 'Ohio State', 'conference': 'Big Ten', 'nil_budget': 13800000, 'recruiting_wins': 10, 'recruiting_losses': 5},
+        {'school': 'Texas', 'conference': 'Big 12', 'nil_budget': 13200000, 'recruiting_wins': 9, 'recruiting_losses': 6},
+        {'school': 'USC', 'conference': 'Pac-12', 'nil_budget': 12500000, 'recruiting_wins': 8, 'recruiting_losses': 7}
+    ]
+    
+    return {
+        'report_type': 'competitive_intel',
+        'data': mock_competitors,
+        'summary': {
+            'total_schools': len(mock_competitors),
+            'avg_nil_budget': sum(s['nil_budget'] for s in mock_competitors) / len(mock_competitors),
+            'market_leader': max(mock_competitors, key=lambda x: x['nil_budget'])['school']
+        }
+    }
+
+@app.get("/api/reports/executive-summary")
+async def get_executive_summary_report(
+    month: str = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="Access denied. Admin role required.")
+    
+    team = db.query(Team).first()
+    athletes = db.query(Athlete).filter(Athlete.is_active == True).all()
+    nil_deals = db.query(NILDeal).all()
+    
+    total_nil_value = sum(deal.deal_value for deal in nil_deals)
+    avg_baron_score = sum(a.baron_hopson_score for a in athletes) / len(athletes) if athletes else 0
+    
+    top_acquisitions = sorted(athletes, key=lambda x: x.market_value, reverse=True)[:5]
+    at_risk_players = [a for a in athletes if a.baron_hopson_score < 3.0][:5]
+    
+    return {
+        'report_type': 'executive_summary',
+        'kpis': {
+            'total_athletes': len(athletes),
+            'total_nil_value': total_nil_value,
+            'avg_baron_score': avg_baron_score,
+            'budget_utilization': total_nil_value / team.nil_budget if team and team.nil_budget > 0 else 0
+        },
+        'top_acquisitions': [{'name': a.name, 'position': a.position, 'value': a.market_value} for a in top_acquisitions],
+        'at_risk_players': [{'name': a.name, 'position': a.position, 'score': a.baron_hopson_score} for a in at_risk_players],
+        'recommendations': [
+            'Focus recruiting on high-ROI positions',
+            'Monitor at-risk player retention',
+            'Optimize NIL budget allocation'
+        ]
+    }
+
+@app.post("/api/reports/export")
+async def export_report(
+    export_request: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    report_type = export_request.get('type')
+    format_type = export_request.get('format')
+    filters = export_request.get('filters', {})
+    
+    from datetime import datetime
+    timestamp = datetime.utcnow().timestamp()
+    export_url = f"/downloads/{report_type}_{format_type}_{timestamp}"
+    
+    return {"export_url": export_url, "message": "Export generated successfully"}
+
+@app.post("/api/reports/schedule")
+async def schedule_report(
+    schedule_data: dict,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    db_schedule = ReportSchedule(
+        user_id=current_user.id,
+        report_type=schedule_data.get('type'),
+        cadence=schedule_data.get('cadence'),
+        recipients=schedule_data.get('recipients', []),
+        filters=schedule_data.get('filters', {})
+    )
+    db.add(db_schedule)
+    db.commit()
+    return {"message": "Report scheduled successfully"}

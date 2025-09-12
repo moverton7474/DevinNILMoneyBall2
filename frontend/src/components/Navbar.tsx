@@ -9,7 +9,8 @@ import {
   DollarSign, 
   Shield, 
   LogOut,
-  Menu
+  Menu,
+  FileText
 } from 'lucide-react'
 import { useState } from 'react'
 
@@ -31,6 +32,7 @@ const Navbar = () => {
     { path: '/', label: 'Dashboard', icon: BarChart3 },
     { path: '/athletes', label: 'Athletes', icon: Users },
     { path: '/analytics', label: 'Analytics', icon: TrendingUp },
+    { path: '/reports', label: 'Reports', icon: FileText },
     { path: '/transfer-portal', label: 'Transfer Portal', icon: ArrowRightLeft },
     { path: '/nil-deals', label: 'NIL Deals', icon: DollarSign },
     { path: '/revenue-share', label: 'Revenue Share', icon: DollarSign },

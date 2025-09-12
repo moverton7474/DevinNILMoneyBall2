@@ -167,3 +167,44 @@ class ComplianceReport(Base):
     
     team = relationship("Team")
     generator = relationship("User")
+
+class SocialMediaMetrics(Base):
+    __tablename__ = "social_media_metrics"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    athlete_id = Column(Integer, ForeignKey("athletes.id"))
+    platform = Column(String)  # instagram, twitter, tiktok, etc.
+    followers = Column(Integer, default=0)
+    engagement_rate = Column(Float, default=0.0)
+    posts_count = Column(Integer, default=0)
+    social_nil_value = Column(Float, default=0.0)
+    measurement_date = Column(DateTime, default=datetime.utcnow)
+    
+    athlete = relationship("Athlete")
+
+class CompetitiveIntelligence(Base):
+    __tablename__ = "competitive_intelligence"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    school_name = Column(String)
+    conference = Column(String)
+    estimated_nil_budget = Column(Float)
+    estimated_revenue_share = Column(Float)
+    recruiting_wins = Column(Integer, default=0)
+    recruiting_losses = Column(Integer, default=0)
+    market_share_region = Column(String)
+    data_date = Column(DateTime, default=datetime.utcnow)
+
+class ReportSchedule(Base):
+    __tablename__ = "report_schedules"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    report_type = Column(String)
+    cadence = Column(String)  # daily, weekly, monthly
+    recipients = Column(JSON)
+    filters = Column(JSON)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    user = relationship("User")

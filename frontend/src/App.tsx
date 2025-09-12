@@ -5,6 +5,8 @@ import Navbar from './components/Navbar'
 import Dashboard from './pages/Dashboard'
 import Athletes from './pages/Athletes'
 import Analytics from './pages/Analytics'
+import Reports from './pages/Reports'
+import ReportDetail from './pages/ReportDetail'
 import TransferPortal from './pages/TransferPortal'
 import NILDeals from './pages/NILDeals'
 import RevenueShare from './pages/RevenueShare'
@@ -56,6 +58,16 @@ function App() {
               <Route path="/compliance" element={
                 <ProtectedRoute>
                   <Compliance />
+                </ProtectedRoute>
+              } />
+              <Route path="/reports" element={
+                <ProtectedRoute>
+                  <Reports />
+                </ProtectedRoute>
+              } />
+              <Route path="/reports/:reportId" element={
+                <ProtectedRoute>
+                  <ReportDetail />
                 </ProtectedRoute>
               } />
             </Routes>
