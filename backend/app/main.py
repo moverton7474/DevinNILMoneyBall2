@@ -79,6 +79,10 @@ async def login(login_data: UserLogin, db: Session = Depends(get_db)):
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer", "user": user}
 
+@app.get("/auth/me", response_model=UserResponse)
+async def get_current_user_info(current_user: User = Depends(get_current_active_user)):
+    return current_user
+
 @app.post("/teams", response_model=TeamResponse)
 async def create_team(team_data: TeamCreate, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
     db_team = Team(**team_data.dict(), coach_id=current_user.id)
