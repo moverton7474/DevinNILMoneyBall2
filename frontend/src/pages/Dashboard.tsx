@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import { Users, DollarSign, TrendingUp, AlertTriangle } from 'lucide-react'
@@ -147,7 +147,7 @@ const Dashboard = () => {
                   fill="#8884d8"
                   dataKey="totalValue"
                 >
-                  {positionData.map((entry, index) => (
+                  {positionData.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
