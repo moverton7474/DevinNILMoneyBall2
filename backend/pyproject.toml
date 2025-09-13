@@ -23,7 +23,6 @@ numpy = "^2.3.3"
 scikit-learn = "^1.7.2"
 prometheus-fastapi-instrumentator = "^6.1.0"
 slowapi = "^0.1.9"
-aioredis = "^2.0.1"
 gunicorn = "^21.2.0"
 
 

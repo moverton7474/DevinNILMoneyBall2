@@ -9,7 +9,7 @@ import time
 import json
 import asyncio
 from datetime import datetime, timedelta
-import aioredis
+import redis
 from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -59,8 +59,8 @@ async def startup_event():
     global redis_client
     try:
         redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-        redis_client = aioredis.from_url(redis_url, decode_responses=True)
-        await redis_client.ping()
+        redis_client = redis.from_url(redis_url, decode_responses=True)
+        redis_client.ping()
         print("Redis connection established")
     except Exception as e:
         print(f"Redis connection failed: {e}")
@@ -70,7 +70,7 @@ async def startup_event():
 async def shutdown_event():
     global redis_client
     if redis_client:
-        await redis_client.close()
+        redis_client.close()
 
 instrumentator = Instrumentator()
 instrumentator.instrument(app).expose(app)
@@ -90,20 +90,20 @@ async def add_security_headers(request: Request, call_next):
     
     return response
 
-async def get_cached_data(key: str):
+def get_cached_data(key: str):
     if redis_client:
         try:
-            cached = await redis_client.get(key)
+            cached = redis_client.get(key)
             if cached:
                 return json.loads(cached)
         except Exception as e:
             print(f"Redis get error: {e}")
     return None
 
-async def set_cached_data(key: str, data: dict, expire: int = 300):
+def set_cached_data(key: str, data: dict, expire: int = 300):
     if redis_client:
         try:
-            await redis_client.setex(key, expire, json.dumps(data, default=str))
+            redis_client.setex(key, expire, json.dumps(data, default=str))
         except Exception as e:
             print(f"Redis set error: {e}")
 
@@ -122,7 +122,8 @@ async def detailed_health_check(db: Session = Depends(get_db)):
     }
     
     try:
-        db.execute("SELECT 1")
+        from sqlalchemy import text
+        db.execute(text("SELECT 1"))
         health_status["services"]["database"] = {"status": "healthy", "response_time_ms": 0}
     except Exception as e:
         health_status["services"]["database"] = {"status": "unhealthy", "error": str(e)}
@@ -131,7 +132,7 @@ async def detailed_health_check(db: Session = Depends(get_db)):
     if redis_client:
         try:
             start_time = time.time()
-            await redis_client.ping()
+            redis_client.ping()
             response_time = (time.time() - start_time) * 1000
             health_status["services"]["redis"] = {"status": "healthy", "response_time_ms": round(response_time, 2)}
         except Exception as e:
@@ -304,7 +305,7 @@ async def optimize_roster(team_id: int, budget: float, db: Session = Depends(get
 @limiter.limit("100/hour")
 async def get_team_dashboard(request: Request, team_id: int, db: Session = Depends(get_db)):
     cache_key = f"dashboard:team:{team_id}"
-    cached_data = await get_cached_data(cache_key)
+    cached_data = get_cached_data(cache_key)
     if cached_data:
         return cached_data
     
@@ -357,7 +358,7 @@ async def get_team_dashboard(request: Request, team_id: int, db: Session = Depen
         ]
     }
     
-    await set_cached_data(cache_key, dashboard_data, expire=300)
+    set_cached_data(cache_key, dashboard_data, expire=300)
     return dashboard_data
 
 @app.post("/transfer-portal", response_model=TransferPortalResponse)
