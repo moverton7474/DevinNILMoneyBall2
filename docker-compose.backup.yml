@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  backup:
+    image: postgres:15
+    environment:
+      PGPASSWORD: postgres
+    volumes:
+      - ./scripts:/scripts
+      - backup_data:/backups
+    depends_on:
+      - db
+    command: >
+      sh -c "
+        while ! pg_isready -h db -U postgres; do
+          echo 'Waiting for database...'
+          sleep 2
+        done
+        echo 'Database is ready, starting backup service...'
+        while true; do
+          /scripts/backup.sh
+          sleep 86400
+        done
+      "
+
+volumes:
+  backup_data:

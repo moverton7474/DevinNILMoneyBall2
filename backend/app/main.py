@@ -1,9 +1,20 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import psycopg
+import os
+import time
+import json
+import asyncio
+from datetime import datetime, timedelta
+import aioredis
+from prometheus_fastapi_instrumentator import Instrumentator
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from .database import engine, get_db
 from .models import Base, User, Team, Athlete, NILDeal, AthleteEvaluation, TransferPortalEntry, RevenueShareAllocation, ComplianceReport, SocialMediaMetrics, CompetitiveIntelligence, ReportSchedule
@@ -27,20 +38,123 @@ app = FastAPI(
     version="1.0.0"
 )
 
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 # Disable CORS. Do not remove this for full-stack development.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["http://localhost:3000", "http://localhost:80", "http://localhost", "https://*.vercel.app"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
 )
+
+redis_client = None
+
+@app.on_event("startup")
+async def startup_event():
+    global redis_client
+    try:
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        redis_client = aioredis.from_url(redis_url, decode_responses=True)
+        await redis_client.ping()
+        print("Redis connection established")
+    except Exception as e:
+        print(f"Redis connection failed: {e}")
+        redis_client = None
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    global redis_client
+    if redis_client:
+        await redis_client.close()
+
+instrumentator = Instrumentator()
+instrumentator.instrument(app).expose(app)
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-Process-Time"] = str(process_time)
+    
+    return response
+
+async def get_cached_data(key: str):
+    if redis_client:
+        try:
+            cached = await redis_client.get(key)
+            if cached:
+                return json.loads(cached)
+        except Exception as e:
+            print(f"Redis get error: {e}")
+    return None
+
+async def set_cached_data(key: str, data: dict, expire: int = 300):
+    if redis_client:
+        try:
+            await redis_client.setex(key, expire, json.dumps(data, default=str))
+        except Exception as e:
+            print(f"Redis set error: {e}")
 
 baron_hopson_engine = BaronHopsonEngine()
 
 @app.get("/healthz")
 async def healthz():
     return {"status": "ok", "message": "NIL Moneyball API is running"}
+
+@app.get("/health/detailed")
+async def detailed_health_check(db: Session = Depends(get_db)):
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "services": {}
+    }
+    
+    try:
+        db.execute("SELECT 1")
+        health_status["services"]["database"] = {"status": "healthy", "response_time_ms": 0}
+    except Exception as e:
+        health_status["services"]["database"] = {"status": "unhealthy", "error": str(e)}
+        health_status["status"] = "degraded"
+    
+    if redis_client:
+        try:
+            start_time = time.time()
+            await redis_client.ping()
+            response_time = (time.time() - start_time) * 1000
+            health_status["services"]["redis"] = {"status": "healthy", "response_time_ms": round(response_time, 2)}
+        except Exception as e:
+            health_status["services"]["redis"] = {"status": "unhealthy", "error": str(e)}
+            health_status["status"] = "degraded"
+    else:
+        health_status["services"]["redis"] = {"status": "not_configured"}
+    
+    try:
+        athlete_count = db.query(Athlete).count()
+        team_count = db.query(Team).count()
+        health_status["services"]["application"] = {
+            "status": "healthy",
+            "metrics": {
+                "total_athletes": athlete_count,
+                "total_teams": team_count
+            }
+        }
+    except Exception as e:
+        health_status["services"]["application"] = {"status": "unhealthy", "error": str(e)}
+        health_status["status"] = "degraded"
+    
+    return health_status
 
 @app.post("/auth/register", response_model=UserResponse)
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
@@ -67,7 +181,8 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
     return db_user
 
 @app.post("/auth/login")
-async def login(login_data: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+async def login(request: Request, login_data: UserLogin, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == login_data.username).first()
     if not user or not verify_password(login_data.password, user.hashed_password):
         raise HTTPException(
@@ -121,7 +236,8 @@ async def create_athlete(athlete_data: AthleteCreate, current_user: User = Depen
     return db_athlete
 
 @app.get("/athletes", response_model=List[AthleteResponse])
-async def get_athletes(team_id: Optional[int] = None, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+@limiter.limit("100/hour")
+async def get_athletes(request: Request, team_id: Optional[int] = None, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     query = db.query(Athlete)
     if team_id:
         query = query.filter(Athlete.team_id == team_id)
@@ -185,7 +301,13 @@ async def optimize_roster(team_id: int, budget: float, db: Session = Depends(get
     return optimization
 
 @app.get("/analytics/team-dashboard/{team_id}")
-async def get_team_dashboard(team_id: int, db: Session = Depends(get_db)):
+@limiter.limit("100/hour")
+async def get_team_dashboard(request: Request, team_id: int, db: Session = Depends(get_db)):
+    cache_key = f"dashboard:team:{team_id}"
+    cached_data = await get_cached_data(cache_key)
+    if cached_data:
+        return cached_data
+    
     team = db.query(Team).filter(Team.id == team_id).first()
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
@@ -209,8 +331,14 @@ async def get_team_dashboard(team_id: int, db: Session = Depends(get_db)):
         pos_athletes = [a for a in athletes if a.position == pos]
         position_breakdown[pos]['avg_score'] = sum(a.baron_hopson_score for a in pos_athletes) / len(pos_athletes)
     
-    return {
-        'team': team,
+    dashboard_data = {
+        'team': {
+            'id': team.id,
+            'name': team.name,
+            'conference': team.conference,
+            'revenue_share_cap': team.revenue_share_cap,
+            'current_revenue_share': team.current_revenue_share
+        },
         'total_athletes': len(athletes),
         'total_baron_hopson_score': total_baron_hopson,
         'average_baron_hopson_score': avg_baron_hopson,
@@ -218,8 +346,19 @@ async def get_team_dashboard(team_id: int, db: Session = Depends(get_db)):
         'total_revenue_share_value': total_revenue_share,
         'revenue_share_cap_remaining': team.revenue_share_cap - team.current_revenue_share,
         'position_breakdown': position_breakdown,
-        'top_performers': sorted(athletes, key=lambda x: x.baron_hopson_score, reverse=True)[:10]
+        'top_performers': [
+            {
+                'id': a.id,
+                'name': a.name,
+                'position': a.position,
+                'baron_hopson_score': a.baron_hopson_score,
+                'market_value': a.market_value
+            } for a in sorted(athletes, key=lambda x: x.baron_hopson_score, reverse=True)[:10]
+        ]
     }
+    
+    await set_cached_data(cache_key, dashboard_data, expire=300)
+    return dashboard_data
 
 @app.post("/transfer-portal", response_model=TransferPortalResponse)
 async def create_transfer_portal_entry(entry_data: TransferPortalCreate, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
@@ -319,7 +458,9 @@ async def get_title_ix_compliance(team_id: int, db: Session = Depends(get_db)):
     }
 
 @app.get("/api/reports/baron-roi")
+@limiter.limit("50/hour")
 async def get_baron_roi_report(
+    request: Request,
     start: str = None, 
     end: str = None, 
     team: int = None, 
