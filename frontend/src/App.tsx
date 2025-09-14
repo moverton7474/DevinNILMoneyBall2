@@ -5,6 +5,7 @@ import Navbar from './components/Navbar'
 import Dashboard from './pages/Dashboard'
 import Athletes from './pages/Athletes'
 import Analytics from './pages/Analytics'
+import AdvancedAnalytics from './pages/AdvancedAnalytics'
 import Reports from './pages/Reports'
 import ReportDetail from './pages/ReportDetail'
 import TransferPortal from './pages/TransferPortal'
@@ -38,6 +39,11 @@ function App() {
               <Route path="/analytics" element={
                 <ProtectedRoute>
                   <Analytics />
+                </ProtectedRoute>
+              } />
+              <Route path="/advanced-analytics" element={
+                <ProtectedRoute>
+                  <AdvancedAnalytics />
                 </ProtectedRoute>
               } />
               <Route path="/transfer-portal" element={

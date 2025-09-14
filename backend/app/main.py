@@ -20,6 +20,7 @@ from .database import engine, get_db
 from .models import Base, User, Team, Athlete, NILDeal, AthleteEvaluation, TransferPortalEntry, RevenueShareAllocation, ComplianceReport, SocialMediaMetrics, CompetitiveIntelligence, ReportSchedule
 from .auth import get_current_user, get_current_active_user, create_access_token, verify_password, get_password_hash
 from .baron_hopson import BaronHopsonEngine
+from .advanced_analytics import AdvancedBaronHopsonAnalytics
 from .schemas import (
     UserBase, UserCreate, UserLogin, UserResponse,
     TeamBase, TeamCreate, TeamResponse,
@@ -108,6 +109,7 @@ def set_cached_data(key: str, data: dict, expire: int = 300):
             print(f"Redis set error: {e}")
 
 baron_hopson_engine = BaronHopsonEngine()
+advanced_analytics = AdvancedBaronHopsonAnalytics()
 
 @app.get("/healthz")
 async def healthz():
@@ -474,6 +476,15 @@ async def get_baron_roi_report(
     roi_data = []
     for athlete in athletes:
         roi_ratio = athlete.market_value / max(athlete.nil_value, 1) if athlete.nil_value > 0 else 0
+        
+        try:
+            prediction = advanced_analytics.predict_future_performance(athlete, db, 6)
+            predicted_trend = prediction.get('trend', 'stable')
+            risk_level = 'high' if len(prediction.get('risk_factors', [])) > 2 else 'low'
+        except:
+            predicted_trend = 'stable'
+            risk_level = 'low'
+        
         roi_data.append({
             'athlete_id': athlete.id,
             'name': athlete.name,
@@ -482,7 +493,9 @@ async def get_baron_roi_report(
             'nil_investment': athlete.nil_value,
             'market_value': athlete.market_value,
             'roi_ratio': roi_ratio,
-            'is_baron_gem': roi_ratio >= 6.0
+            'is_baron_gem': roi_ratio >= 6.0,
+            'predicted_trend': predicted_trend,
+            'risk_level': risk_level
         })
     
     return {
@@ -790,3 +803,78 @@ async def schedule_report(
     db.add(db_schedule)
     db.commit()
     return {"message": "Report scheduled successfully"}
+
+@app.get("/api/analytics/predict-performance/{athlete_id}")
+@limiter.limit("20/hour")
+async def predict_athlete_performance(
+    request: Request,
+    athlete_id: int,
+    months_ahead: int = 12,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    athlete = db.query(Athlete).filter(Athlete.id == athlete_id).first()
+    if not athlete:
+        raise HTTPException(status_code=404, detail="Athlete not found")
+    
+    prediction = advanced_analytics.predict_future_performance(athlete, db, months_ahead)
+    return prediction
+
+@app.get("/api/analytics/performance-trends/{athlete_id}")
+@limiter.limit("20/hour") 
+async def get_performance_trends(
+    request: Request,
+    athlete_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    athlete = db.query(Athlete).filter(Athlete.id == athlete_id).first()
+    if not athlete:
+        raise HTTPException(status_code=404, detail="Athlete not found")
+    
+    trends = advanced_analytics.analyze_performance_trends(athlete, db)
+    return trends
+
+@app.get("/api/analytics/comparative-benchmark/{athlete_id}")
+@limiter.limit("20/hour")
+async def get_comparative_benchmark(
+    request: Request,
+    athlete_id: int,
+    scope: str = "position",
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    athlete = db.query(Athlete).filter(Athlete.id == athlete_id).first()
+    if not athlete:
+        raise HTTPException(status_code=404, detail="Athlete not found")
+    
+    benchmark = advanced_analytics.comparative_benchmarking(athlete, db, scope)
+    return benchmark
+
+@app.get("/api/analytics/roi-projections/{athlete_id}")
+@limiter.limit("10/hour")
+async def get_roi_projections(
+    request: Request,
+    athlete_id: int,
+    scenarios: str = "50000,100000,200000,500000",
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    athlete = db.query(Athlete).filter(Athlete.id == athlete_id).first()
+    if not athlete:
+        raise HTTPException(status_code=404, detail="Athlete not found")
+    
+    investment_scenarios = [float(x) for x in scenarios.split(",")]
+    projections = advanced_analytics.generate_roi_projections(athlete, db, investment_scenarios)
+    return projections
+
+@app.get("/api/analytics/team-portfolio/{team_id}")
+@limiter.limit("10/hour")
+async def get_team_portfolio_analysis(
+    request: Request,
+    team_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    analysis = advanced_analytics.team_portfolio_analysis(team_id, db)
+    return analysis

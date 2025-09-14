@@ -32,6 +32,7 @@ const Navbar = () => {
     { path: '/', label: 'Dashboard', icon: BarChart3 },
     { path: '/athletes', label: 'Athletes', icon: Users },
     { path: '/analytics', label: 'Analytics', icon: TrendingUp },
+    { path: '/advanced-analytics', label: 'Advanced Analytics', icon: TrendingUp },
     { path: '/reports', label: 'Reports', icon: FileText },
     { path: '/transfer-portal', label: 'Transfer Portal', icon: ArrowRightLeft },
     { path: '/nil-deals', label: 'NIL Deals', icon: DollarSign },
