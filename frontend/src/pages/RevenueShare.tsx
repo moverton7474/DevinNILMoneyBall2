@@ -7,7 +7,7 @@ import { DollarSign, Plus, AlertTriangle, CheckCircle, TrendingUp } from 'lucide
 import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts'
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 interface RevenueShareData {
   team: {

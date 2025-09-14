@@ -5,7 +5,7 @@ import { Badge } from '../components/ui/badge'
 import { ArrowRightLeft, TrendingUp, Calendar, School } from 'lucide-react'
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || ''
 
 interface TransferPortalEntry {
   id: number
