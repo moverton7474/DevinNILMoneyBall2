@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import math
 from typing import Dict, List, Optional, Tuple
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -276,16 +277,26 @@ class AdvancedBaronHopsonAnalytics:
             value_increase = projected_market_value - current_market_value
             roi_percentage = ((value_increase - investment) / investment * 100) if investment > 0 else 0
             
+            if value_increase > 0:
+                payback_months = investment / (value_increase / 12)
+                payback_months = min(999.9, payback_months)  # Cap at 999.9 months
+            else:
+                payback_months = 999.9  # Use large finite number instead of inf
+            
             projections.append({
                 'investment': investment,
                 'projected_score': round(projected_score, 2),
                 'projected_market_value': round(projected_market_value, 2),
                 'value_increase': round(value_increase, 2),
                 'roi_percentage': round(roi_percentage, 2),
-                'payback_months': round(investment / (value_increase / 12), 1) if value_increase > 0 else float('inf')
+                'payback_months': round(payback_months, 1)
             })
         
-        optimal_investment = max(projections, key=lambda x: x['roi_percentage'] if x['roi_percentage'] != float('inf') else -float('inf'))
+        valid_projections = [p for p in projections if math.isfinite(p['roi_percentage'])]
+        if valid_projections:
+            optimal_investment = max(valid_projections, key=lambda x: x['roi_percentage'])
+        else:
+            optimal_investment = projections[0] if projections else None
         
         return {
             'current_metrics': {
