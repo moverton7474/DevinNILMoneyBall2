@@ -884,6 +884,7 @@ async def get_team_portfolio_analysis(
 @app.get("/api/valuation/v3/{athlete_id}")
 @limiter.limit("30/hour")
 async def get_v3_valuation(
+    request: Request,
     athlete_id: int,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -913,6 +914,7 @@ async def get_v3_valuation(
 @app.get("/api/valuation/v3/team/{team_id}")
 @limiter.limit("20/hour")
 async def get_v3_team_portfolio(
+    request: Request,
     team_id: int,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
