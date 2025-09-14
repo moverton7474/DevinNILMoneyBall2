@@ -21,6 +21,7 @@ from .models import Base, User, Team, Athlete, NILDeal, AthleteEvaluation, Trans
 from .auth import get_current_user, get_current_active_user, create_access_token, verify_password, get_password_hash
 from .baron_hopson import BaronHopsonEngine
 from .advanced_analytics import AdvancedBaronHopsonAnalytics
+from .valuation_engine_v3 import ValuationEngineV3
 from .schemas import (
     UserBase, UserCreate, UserLogin, UserResponse,
     TeamBase, TeamCreate, TeamResponse,
@@ -110,6 +111,7 @@ def set_cached_data(key: str, data: dict, expire: int = 300):
 
 baron_hopson_engine = BaronHopsonEngine()
 advanced_analytics = AdvancedBaronHopsonAnalytics()
+valuation_engine_v3 = ValuationEngineV3()
 
 @app.get("/healthz")
 async def healthz():
@@ -878,3 +880,61 @@ async def get_team_portfolio_analysis(
 ):
     analysis = advanced_analytics.team_portfolio_analysis(team_id, db)
     return analysis
+
+@app.get("/api/valuation/v3/{athlete_id}")
+@limiter.limit("30/hour")
+async def get_v3_valuation(
+    athlete_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get precise valuation for an athlete using v3.0 engine"""
+    athlete = db.query(Athlete).filter(Athlete.id == athlete_id).first()
+    if not athlete:
+        raise HTTPException(status_code=404, detail="Athlete not found")
+    
+    try:
+        valuation = valuation_engine_v3.calculate_precise_valuation(athlete, db)
+        
+        def decimal_to_str(obj):
+            if hasattr(obj, 'items'):
+                return {k: decimal_to_str(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [decimal_to_str(item) for item in obj]
+            elif hasattr(obj, 'quantize'):  # Decimal object
+                return str(obj)
+            return obj
+        
+        return decimal_to_str(valuation)
+    except Exception as e:
+        print(f"V3 valuation error for athlete {athlete_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Valuation calculation failed")
+
+@app.get("/api/valuation/v3/team/{team_id}")
+@limiter.limit("20/hour")
+async def get_v3_team_portfolio(
+    team_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get team portfolio valuation using v3.0 engine"""
+    team = db.query(Team).filter(Team.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    
+    try:
+        portfolio = valuation_engine_v3.calculate_team_portfolio_value(team_id, db)
+        
+        def decimal_to_str(obj):
+            if hasattr(obj, 'items'):
+                return {k: decimal_to_str(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [decimal_to_str(item) for item in obj]
+            elif hasattr(obj, 'quantize'):  # Decimal object
+                return str(obj)
+            return obj
+        
+        return decimal_to_str(portfolio)
+    except Exception as e:
+        print(f"V3 team portfolio error for team {team_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Portfolio calculation failed")

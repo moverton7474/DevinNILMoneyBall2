@@ -165,7 +165,7 @@ const TransferPortal = () => {
                   <div>
                     <p className="text-xs text-gray-500">Market Value</p>
                     <p className="font-semibold">
-                      ${(entry.market_value_at_entry || 0).toLocaleString()}
+                      ${(entry.market_value_at_entry || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                   </div>
                 </div>

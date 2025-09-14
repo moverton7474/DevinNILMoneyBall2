@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, Text, ForeignKey, JSON, DECIMAL
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -25,9 +25,9 @@ class Team(Base):
     conference = Column(String)
     division = Column(String)
     coach_id = Column(Integer, ForeignKey("users.id"))
-    revenue_share_cap = Column(Float, default=20500000.0)  # $20.5M cap
-    current_revenue_share = Column(Float, default=0.0)
-    nil_budget = Column(Float, default=0.0)
+    revenue_share_cap = Column(DECIMAL(15,2), default=20500000.00)  # $20.5M cap
+    current_revenue_share = Column(DECIMAL(15,2), default=0.00)
+    nil_budget = Column(DECIMAL(15,2), default=0.00)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
@@ -57,13 +57,13 @@ class Athlete(Base):
     receiving_yards = Column(Integer, default=0)
     receiving_tds = Column(Integer, default=0)
     tackles = Column(Integer, default=0)
-    sacks = Column(Float, default=0.0)
+    sacks = Column(DECIMAL(5,2), default=0.00)
     interceptions = Column(Integer, default=0)
     
-    baron_hopson_score = Column(Float, default=0.0)
-    market_value = Column(Float, default=0.0)
-    nil_value = Column(Float, default=0.0)
-    revenue_share_value = Column(Float, default=0.0)
+    baron_hopson_score = Column(DECIMAL(5,2), default=0.00)
+    market_value = Column(DECIMAL(15,2), default=0.00)
+    nil_value = Column(DECIMAL(15,2), default=0.00)
+    revenue_share_value = Column(DECIMAL(15,2), default=0.00)
     
     is_active = Column(Boolean, default=True)
     transfer_portal_status = Column(String, default="enrolled")  # enrolled, portal, transferred
@@ -82,7 +82,7 @@ class NILDeal(Base):
     athlete_id = Column(Integer, ForeignKey("athletes.id"))
     deal_type = Column(String)  # endorsement, appearance, social_media, etc.
     brand_name = Column(String)
-    deal_value = Column(Float)
+    deal_value = Column(DECIMAL(15,2))
     deal_length_months = Column(Integer)
     status = Column(String, default="active")  # active, completed, terminated
     compliance_status = Column(String, default="pending")  # pending, approved, rejected
@@ -102,15 +102,15 @@ class AthleteEvaluation(Base):
     athlete_id = Column(Integer, ForeignKey("athletes.id"))
     evaluator_id = Column(Integer, ForeignKey("users.id"))
     
-    performance_score = Column(Float, default=0.0)
-    potential_score = Column(Float, default=0.0)
-    marketability_score = Column(Float, default=0.0)
-    leadership_score = Column(Float, default=0.0)
-    academic_score = Column(Float, default=0.0)
+    performance_score = Column(DECIMAL(5,2), default=0.00)
+    potential_score = Column(DECIMAL(5,2), default=0.00)
+    marketability_score = Column(DECIMAL(5,2), default=0.00)
+    leadership_score = Column(DECIMAL(5,2), default=0.00)
+    academic_score = Column(DECIMAL(5,2), default=0.00)
     
-    overall_score = Column(Float, default=0.0)
-    recommended_nil_value = Column(Float, default=0.0)
-    recommended_revenue_share = Column(Float, default=0.0)
+    overall_score = Column(DECIMAL(5,2), default=0.00)
+    recommended_nil_value = Column(DECIMAL(15,2), default=0.00)
+    recommended_revenue_share = Column(DECIMAL(15,2), default=0.00)
     
     notes = Column(Text)
     evaluation_date = Column(DateTime, default=datetime.utcnow)
@@ -128,8 +128,8 @@ class TransferPortalEntry(Base):
     status = Column(String, default="active")  # active, committed, withdrawn
     target_schools = Column(JSON)  # List of schools interested
     
-    baron_hopson_score_at_entry = Column(Float)
-    market_value_at_entry = Column(Float)
+    baron_hopson_score_at_entry = Column(DECIMAL(5,2))
+    market_value_at_entry = Column(DECIMAL(15,2))
     
     athlete = relationship("Athlete")
 
@@ -139,14 +139,14 @@ class RevenueShareAllocation(Base):
     id = Column(Integer, primary_key=True, index=True)
     team_id = Column(Integer, ForeignKey("teams.id"))
     athlete_id = Column(Integer, ForeignKey("athletes.id"))
-    allocation_amount = Column(Float)
-    allocation_percentage = Column(Float)
+    allocation_amount = Column(DECIMAL(15,2))
+    allocation_percentage = Column(DECIMAL(5,4))
     academic_year = Column(String)
     status = Column(String, default="proposed")  # proposed, approved, distributed
     
     title_ix_compliant = Column(Boolean, default=True)
     back_pay_eligible = Column(Boolean, default=False)
-    back_pay_amount = Column(Float, default=0.0)
+    back_pay_amount = Column(DECIMAL(15,2), default=0.00)
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -175,9 +175,9 @@ class SocialMediaMetrics(Base):
     athlete_id = Column(Integer, ForeignKey("athletes.id"))
     platform = Column(String)  # instagram, twitter, tiktok, etc.
     followers = Column(Integer, default=0)
-    engagement_rate = Column(Float, default=0.0)
+    engagement_rate = Column(DECIMAL(5,4), default=0.0000)
     posts_count = Column(Integer, default=0)
-    social_nil_value = Column(Float, default=0.0)
+    social_nil_value = Column(DECIMAL(15,2), default=0.00)
     measurement_date = Column(DateTime, default=datetime.utcnow)
     
     athlete = relationship("Athlete")
@@ -188,8 +188,8 @@ class CompetitiveIntelligence(Base):
     id = Column(Integer, primary_key=True, index=True)
     school_name = Column(String)
     conference = Column(String)
-    estimated_nil_budget = Column(Float)
-    estimated_revenue_share = Column(Float)
+    estimated_nil_budget = Column(DECIMAL(15,2))
+    estimated_revenue_share = Column(DECIMAL(15,2))
     recruiting_wins = Column(Integer, default=0)
     recruiting_losses = Column(Integer, default=0)
     market_share_region = Column(String)

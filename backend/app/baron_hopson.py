@@ -169,18 +169,28 @@ class BaronHopsonEngine:
         
         return max(0.0, min(100.0, final_score))
     
-    def calculate_nil_value(self, baron_hopson_score: float, athlete: Athlete) -> float:
-        """Calculate recommended NIL value based on Baron Hopson score"""
-        normalized_score = baron_hopson_score / 100.0
-        nil_value = self.base_nil_value * (1 + normalized_score ** 2 * 10)
+    def calculate_nil_value(self, baron_hopson_score: float, athlete: Athlete):
+        """Calculate recommended NIL value based on Baron Hopson score with decimal precision"""
+        from decimal import Decimal
         
-        position_multiplier = self.POSITION_MULTIPLIERS.get(athlete.position, 1.0)
+        normalized_score = Decimal(str(baron_hopson_score)) / Decimal('100.0')
+        
+        nil_value = Decimal(str(self.base_nil_value)) * (Decimal('1') + normalized_score ** 2 * Decimal('10'))
+        
+        # Apply position multiplier
+        position_multiplier = Decimal(str(self.POSITION_MULTIPLIERS.get(athlete.position, 1.0)))
         nil_value *= position_multiplier
         
-        year_multipliers = {'FR': 0.7, 'SO': 0.85, 'JR': 1.0, 'SR': 1.2, 'GRAD': 1.1}
-        nil_value *= year_multipliers.get(athlete.year, 1.0)
+        year_multipliers = {
+            'FR': Decimal('0.7'),  # Freshmen - lower immediate value
+            'SO': Decimal('0.85'), # Sophomores
+            'JR': Decimal('1.0'),  # Juniors - peak value
+            'SR': Decimal('1.2'),  # Seniors - immediate impact
+            'GRAD': Decimal('1.1') # Graduate students
+        }
+        nil_value *= year_multipliers.get(athlete.year, Decimal('1.0'))
         
-        return min(self.max_nil_value, max(0, nil_value))
+        return min(Decimal(str(self.max_nil_value)), max(Decimal('0'), nil_value)).quantize(Decimal('0.01'))
     
     def calculate_revenue_share_value(self, baron_hopson_score: float, athlete: Athlete) -> float:
         """Calculate recommended revenue share allocation"""

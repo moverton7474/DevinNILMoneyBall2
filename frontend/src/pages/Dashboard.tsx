@@ -91,7 +91,7 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${(dashboardData?.total_nil_value || 0).toLocaleString()}
+              ${(dashboardData?.total_nil_value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </CardContent>
         </Card>
@@ -103,7 +103,7 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              ${(dashboardData?.revenue_share_cap_remaining || 0).toLocaleString()}
+              ${(dashboardData?.revenue_share_cap_remaining || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
           </CardContent>
         </Card>
@@ -142,7 +142,7 @@ const Dashboard = () => {
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ position, totalValue }) => `${position}: $${totalValue?.toLocaleString()}`}
+                  label={({ position, totalValue }) => `${position}: $${totalValue?.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="totalValue"

@@ -88,7 +88,7 @@ const Analytics = () => {
                       <div>
                         <p className="text-sm text-gray-600">Total Budget</p>
                         <p className="text-2xl font-bold">
-                          ${optimizationResult.total_budget.toLocaleString()}
+                          ${optimizationResult.total_budget.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                       </div>
                       <DollarSign className="w-8 h-8 text-blue-600" />
